@@ -1,0 +1,64 @@
+name: Terraform CI
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-ci.yml"
+      - "policies/**"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-ci.yml"
+      - "policies/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-scan:
+    name: Validate and scan Terraform
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [azure, gcp]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.cloud }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Initialize TFLint
+        run: tflint --init
+
+      - name: TFLint
+        run: tflint --recursive
+
+      - name: Checkov IaC scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/${{ matrix.cloud }}
+          framework: terraform
+          quiet: true
+          soft_fail: false
